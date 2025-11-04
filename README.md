@@ -31,22 +31,22 @@ use trade-offs:
   builder_thrust:
   - temporary memory overhead for N points: N ints + order 2N points 
     (ie, total mem order 3x that of input data!)
-  - perf 100K float3s (4090) :   ~4ms
-  - perf   1M float3s (4090) :  ~20ms
-  - perf  10M float3s (4090) : ~200ms
+  - perf 100K float3s (NVIDIA RTX 4090) :   ~4ms
+  - perf   1M float3s (NVIDIA RTX 4090) :  ~20ms
+  - perf  10M float3s (NVIDIA RTX 4090) : ~200ms
   
   builder_bitonic:
   - temporary memory overhead for N points: N ints 
     (ie, ca 30% mem overhead for float3)
-  - perf 100K float3s (4090) :  ~10ms
-  - perf   1M float3s (4090) :  ~27ms
-  - perf  10M float3s (4090) : ~390ms
+  - perf 100K float3s (NVIDIA RTX 4090) :  ~10ms
+  - perf   1M float3s (NVIDIA RTX 4090) :  ~27ms
+  - perf  10M float3s (NVIDIA RTX 4090) : ~390ms
 
   builder_inplace:
   - temporary memory overhead for N points: nada, nil, zilch.
-  - perf 100K float3s (4090) :  ~10ms
-  - perf   1M float3s (4090) : ~220ms
-  - perf  10M float3s (4090) : ~4.3s
+  - perf 100K float3s (NVIDIA RTX 4090) :  ~10ms
+  - perf   1M float3s (NVIDIA RTX 4090) : ~220ms
+  - perf  10M float3s (NVIDIA RTX 4090) : ~4.3s
 
 ```
 
