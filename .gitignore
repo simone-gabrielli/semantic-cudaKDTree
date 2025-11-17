@@ -31,3 +31,6 @@ Session.vim
 !*png/*.pdf
 .vs/
 
+build/
+install/
+log/

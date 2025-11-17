@@ -141,6 +141,9 @@ target_sources(cudaKDTree INTERFACE
   cukd/spatial-kdtree.h
   cukd/fcp.h
   cukd/knn.h
+  # Semantic extension
+  cukd/label_mask.h
+  cukd/traversal_label_pruned.h
   )
 target_include_directories(cudaKDTree INTERFACE
   ${PROJECT_SOURCE_DIR}/
@@ -162,6 +165,15 @@ if (NOT CUKD_IS_SUBPROJECT)
 
   add_executable(cukd_sampleHost sampleHost.cu)
   target_link_libraries(cukd_sampleHost PUBLIC cudaKDTree)
+
+  add_executable(cukd_sampleLabel sample_label.cu)
+  target_link_libraries(cukd_sampleLabel cudaKDTree)
+
+  add_executable(cukd_benchLabel bench_label.cu)
+  target_link_libraries(cukd_benchLabel cudaKDTree)
+
+  add_executable(cukd_benchSpatialLabel bench_spatial_label.cu)
+  target_link_libraries(cukd_benchSpatialLabel cudaKDTree)
 
   if(OpenMP_CXX_FOUND)
     target_link_libraries(cukd_sampleHost PUBLIC OpenMP::OpenMP_CXX)
