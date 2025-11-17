@@ -1,3 +1,10 @@
+# Semantic cudaKDTree
+A fork of https://github.com/ingowald/cudaKDTree.git. The main difference
+with the original repository is the possibility to perform label-based search.
+For additional information refer to the paper:
+
+TODO: Add reference to the original paper.
+
 # cudaKDTree - A Library for Building and Querying Left-Balanced (point-)k-d Trees in CUDA
 
 Quick note: This repository contains a set of CUDA based routines for
