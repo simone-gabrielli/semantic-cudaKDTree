@@ -100,24 +100,18 @@ __global__ void kernel_fcp_label_batched2D_constL(
   const int qIdx = begin + i;
   float best;
   int idx;
-
-#if CUKD_LABEL_MASK_WORDS == 1
-  // Direct single-word fast path (no per-thread label loads)
-  idx = cukd::labels::fcp_label_single_word<LPoint3f, LPoint3f_traits, float3>(queries_sorted[qIdx], nodes, N, masks, L, best);
-#else
   // Fallback: build 1-bit mask and use generic wrapper
   Mask desired;
   desired.clear();
   desired.setBit(L);
   idx = cukd::labels::fcp_label_filtered<LPoint3f, LPoint3f_traits, float3>(queries_sorted[qIdx], nodes, N, masks, desired, best);
-#endif
 
   out_idx[qIdx] = idx;
   out_d2[qIdx] = best;
 }
 
 // ---------------- timing helpers ----------------
-float time_kernel(std::function<void(cudaEvent_t, cudaEvent_t)> launch, int repeats = 5) {
+float time_kernel(std::function<void(cudaEvent_t, cudaEvent_t)> launch, int repeats = 1) {
   cudaEvent_t start, stop;
   CUDA_CHECK(cudaEventCreate(&start));
   CUDA_CHECK(cudaEventCreate(&stop));
@@ -146,7 +140,7 @@ int main(int argc, char** argv) {
   int N = (argc > 1 ? std::max(1 << 18, atoi(argv[1])) : 1 << 20);
   int M = (argc > 2 ? std::max(1 << 16, atoi(argv[2])) : 1 << 20);
   int NUM_LABELS = (argc > 3 ? std::max(2, atoi(argv[3])) : 16);
-  int REPEATS = (argc > 4 ? std::max(1, atoi(argv[4])) : 5);
+  int REPEATS = (argc > 4 ? std::max(1, atoi(argv[4])) : 1);
   printf("Benchmark(SpatialKDTree dmem): N=%d, M=%d, labels=%d, repeats=%d\n", N, M, NUM_LABELS, REPEATS);
 
   // host data
@@ -167,7 +161,20 @@ int main(int argc, char** argv) {
 
   // build SpatialKDTree in-place, then wrap
   cukd::SpatialKDTree<LPoint3f, LPoint3f_traits> tree;
-  cukd::buildTree<LPoint3f, LPoint3f_traits>(d_points, N);
+  // Time KD-tree build
+  float t_build_tree_ms = 0.f;
+  {
+    cudaEvent_t start, stop;
+    CUDA_CHECK(cudaEventCreate(&start));
+    CUDA_CHECK(cudaEventCreate(&stop));
+    CUDA_CHECK(cudaEventRecord(start));
+    cukd::buildTree<LPoint3f, LPoint3f_traits>(d_points, N);
+    CUDA_CHECK(cudaEventRecord(stop));
+    CUDA_CHECK(cudaEventSynchronize(stop));
+    CUDA_CHECK(cudaEventElapsedTime(&t_build_tree_ms, start, stop));
+    CUDA_CHECK(cudaEventDestroy(start));
+    CUDA_CHECK(cudaEventDestroy(stop));
+  }
   tree.data = d_points;
   tree.numPrims = N;
 
@@ -175,10 +182,22 @@ int main(int argc, char** argv) {
   const LPoint3f* nodes = tree.data;
   const int nPts = tree.numPrims;
 
-  // build subtree label masks
+  // build subtree label masks (timed)
   cukd::labels::Mask* d_masks = nullptr;
   CUDA_CHECK(cudaMalloc(&d_masks, nPts * sizeof(cukd::labels::Mask)));
-  cukd::labels::build_label_masks<LPoint3f>(const_cast<LPoint3f*>(nodes), nPts, d_masks);
+  float t_build_masks_ms = 0.f;
+  {
+    cudaEvent_t start, stop;
+    CUDA_CHECK(cudaEventCreate(&start));
+    CUDA_CHECK(cudaEventCreate(&stop));
+    CUDA_CHECK(cudaEventRecord(start));
+    cukd::labels::build_label_masks<LPoint3f>(const_cast<LPoint3f*>(nodes), nPts, d_masks);
+    CUDA_CHECK(cudaEventRecord(stop));
+    CUDA_CHECK(cudaEventSynchronize(stop));
+    CUDA_CHECK(cudaEventElapsedTime(&t_build_masks_ms, start, stop));
+    CUDA_CHECK(cudaEventDestroy(start));
+    CUDA_CHECK(cudaEventDestroy(stop));
+  }
 
   // queries
   std::vector<float3> h_q(M);
@@ -371,10 +390,19 @@ int main(int argc, char** argv) {
   // ----- print -----
   auto to_qps = [&](float ms) { return (double)M / (ms / 1000.0); };
   printf("\n=== Results ===\n");
+  printf("Tree Build:          %.3f ms\n", t_build_tree_ms);
+  printf("Label Masks Build:   %.3f ms\n", t_build_masks_ms);
   printf("Unfiltered:          %.3f ms  |  %.1f Mq/s\n", t_unf_ms, to_qps(t_unf_ms) / 1e6);
   printf("Filtered (as-is):    %.3f ms  |  %.1f Mq/s\n", t_lab_ms, to_qps(t_lab_ms) / 1e6);
   printf("Filtered (batched):  %.3f ms  |  %.1f Mq/s\n", t_batched_ms, to_qps(t_batched_ms) / 1e6);
   printf("Filtered (hybrid):   %.3f ms  |  %.1f Mq/s  [level=%d, dense>=%.0f%%]\n", t_hybrid_ms, to_qps(t_hybrid_ms) / 1e6, LEVEL_CHECK, DENSE_THRESH * 100.0f);
+  // Combined build+query totals (for convenience)
+  printf("\n--- Build + Query Totals ---\n");
+  auto total_ms = [&](float query_ms) { return t_build_tree_ms + t_build_masks_ms + query_ms; };
+  printf("Unfiltered Total:     %.3f ms\n", total_ms(t_unf_ms));
+  printf("Filtered (as-is) Total: %.3f ms\n", total_ms(t_lab_ms));
+  printf("Filtered (batched) Total: %.3f ms\n", total_ms(t_batched_ms));
+  printf("Filtered (hybrid) Total:  %.3f ms\n", total_ms(t_hybrid_ms));
 
   // cleanup
   cudaFree(d_masks);
